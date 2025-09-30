@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>College Bus Tracker - Live View</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.css" />
+    <script src="https://unpkg.com/leaflet-routing-machine@latest/dist/leaflet-routing-machine.js"></script>
+    <link
+  rel="stylesheet"
+  href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+  crossorigin=""
+/>
+
+    <style>
+
+        #map { height: 100%; width: 100%; }
+        .status-dot { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: .5; }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 h-screen overflow-hidden">
+    <!-- Header -->
+    <header class=" bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-lg">
+        <div class="px-6 py-4 flex items-center">
+                <img src="/vignan-logo.png" alt="Vignan Logo" class="h-12 w-auto mr-4" style="background:whitesmoke;" >
+                <h1 class="text-2xl font-bold">       VFSTR HYD BUS TRACKER</h1>
+        </div>
+    </header>
+
+    <div class="flex h-[calc(100vh-72px)]">
+        <!-- Sidebar -->
+        <aside class="w-80 bg-white shadow-xl overflow-y-auto border-r border-gray-200">
+            <div class="p-6">
+                <!-- Connection Status -->
+                <div class="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm font-medium text-gray-700">Connection</span>
+                        <div class="flex items-center" id="connection-status">
+                            <span class="w-2 h-2 bg-yellow-500 rounded-full mr-2"></span>
+                            <span class="text-xs text-gray-600">Connecting...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bus Information -->
+                <div class="mb-6">
+                    <h2 class="text-lg font-bold text-gray-800 mb-4">Bus Information</h2>
+                    <div class="mb-4">
+                        <label for="bus-select" class="block text-xs text-gray-600 mb-1">Select Bus No</label>
+                        <select id="bus-select" class="w-full p-2 border rounded">
+                            <option value="">Select a bus</option>
+                        </select>
+                    </div>
+                    <div id="bus-list">
+                        <!-- Bus status cards will be injected here -->
+                    </div>
+                </div>
+
+                <!-- Quick Actions -->
+                <div class="space-y-2">
+                    <button onclick="centerMap()" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition duration-200">
+                        Center on Bus
+                    </button>
+                    <button onclick="refreshTracking()" class="w-full bg-gray-100 hover:bg-gray-200 text-gray-800 font-medium py-2 px-4 rounded-lg transition duration-200">
+                        Refresh
+                    </button>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Map Area -->
+        <main class="flex-1 relative">
+            <div id="map"></div>
+
+            <!-- Top-right location button -->
+            <div class="absolute top-4 right-4 z-[1000]">
+                <button id="show-location-btn" title="Show My Location" class="bg-white border border-blue-300 rounded-lg shadow p-2 flex items-center justify-center hover:bg-blue-50 transition" style="width:48px;height:48px;font-size:1.7rem;">
+                    📍
+                </button>
+            </div>
+
+            <!-- Floating Info Card -->
+            <div class="absolute bottom-4 right-4 bg-white rounded-lg shadow-lg p-4 max-w-xs z-[1000]" id="info-card">
+                <h3 class="font-bold text-gray-800 mb-2">Live Tracking Active</h3>
+                <p class="text-sm text-gray-600">The bus location updates automatically every few seconds.</p>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // Initialize map
+        const map = L.map('map').setView([17.4065, 78.4772], 16); // Hyderabad default
+        
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: 'Akhilesh Dasari | 242FA04144',
+            maxZoom: 20
+        }).addTo(map);
+
+        // Custom bus icon using emoji
+        const busIcon = L.divIcon({
+            className: 'custom-bus-icon',
+            html: `<div style="font-size: 2rem; background:Transparent; border-radius: 50%; border: 2px solid #2563eb; box-shadow: 0 2px 6px rgba(0,0,0,0.15); width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;">🚌</div>`,
+            iconSize: [40, 40],
+            iconAnchor: [20, 20]
+        });
+
+        // College marker icon using clg.png
+        const clgIcon = L.icon({
+            iconUrl: '/clg.png',
+            iconSize: [48, 48],
+            iconAnchor: [24, 48],
+            popupAnchor: [0, -48]
+        });
+
+    // Add college marker at specified lat/lng
+    const clgMarker = L.marker([17.3444158, 78.716655], { icon: clgIcon }).addTo(map);
+    clgMarker.bindPopup('<b>Vignan Foundation for Science Technology and Research</b>').openPopup();
+
+        // Multiple bus support
+        const busMarkers = {};
+        let selectedBusId = "";
+        let route3Polyline = null;
+
+        // Route 3 stops (decimal lat/lng)
+        const route3Stops = [
+            { name: "Dsnr1", lat: 17.368694, lng: 78.526333 },
+            { name: "Dsnr2", lat: 17.368583, lng: 78.530472 },
+            { name: "Chaitanyapuri", lat: 17.368583, lng: 78.530472 },
+            { name: "Kothapet", lat: 17.366972, lng: 78.541028 },
+            { name: "Victoria Memorial", lat: 17.362694, lng: 78.543833 },
+            { name: "Lb nagar", lat: 17.349361, lng: 78.548444 },
+            { name: "Chinchalkunta", lat: 17.342417, lng: 78.557250 },
+            { name: "Art Cinemas", lat: 17.338722, lng: 78.567806 },
+            { name: "Hayath nagar", lat: 17.327139, lng: 78.604472 },
+            { name: "Abdullahpurmet", lat: 17.311944, lng: 78.687194 }
+        ];
+
+        // Add Route 3 stop markers
+        const stopMarkers = [];
+        route3Stops.forEach(stop => {
+            const marker = L.marker([stop.lat, stop.lng]).addTo(map).bindPopup(stop.name);
+            stopMarkers.push(marker);
+        });
+
+        // Show navigation way using Leaflet Routing Machine (road-following route)
+        if (window.L && window.L.Routing) {
+            L.Routing.control({
+                waypoints: route3Stops.map(stop => L.latLng(stop.lat, stop.lng)),
+                routeWhileDragging: false,
+                addWaypoints: false,
+                draggableWaypoints: false,
+                fitSelectedRoutes: true,
+                show: false,
+                lineOptions: { styles: [{ color: '#2563eb', weight: 5 }] }
+            }).addTo(map);
+        }
+
+        let socket = null;
+        function connectToServer() {
+            socket = io('http://localhost:3000');
+            socket.on('connect', () => updateConnectionStatus(true));
+            socket.on('disconnect', () => updateConnectionStatus(false));
+            socket.on('busLocation', (data) => updateBusLocation(data));
+        }
+
+        function updateConnectionStatus(connected) {
+            const statusEl = document.getElementById('connection-status');
+            if (connected) {
+                statusEl.innerHTML = `
+                    <span class="w-2 h-2 bg-green-500 rounded-full mr-2 status-dot"></span>
+                    <span class="text-xs text-green-700 font-medium">Connected</span>
+                `;
+            } else {
+                statusEl.innerHTML = `
+                    <span class="w-2 h-2 bg-red-500 rounded-full mr-2"></span>
+                    <span class="text-xs text-red-700 font-medium">Disconnected</span>
+                `;
+            }
+        }
+
+        function updateBusLocation(data) {
+            // If data is a single bus, wrap in array
+            const buses = Array.isArray(data) ? data : [data];
+            // Populate bus select dropdown
+            const busSelect = document.getElementById('bus-select');
+            const busListEl = document.getElementById('bus-list');
+            // Only update options if changed
+            const busIds = buses.map(b => b.busId);
+            if (busSelect.options.length <= 1 || Array.from(busSelect.options).slice(1).map(o => o.value).join() !== busIds.join()) {
+                busSelect.innerHTML = '<option value="">Select a bus</option>' + busIds.map(id => `<option value="${id}">${id}</option>`).join('');
+            }
+            // Show all active buses
+            busListEl.innerHTML = '';
+            Object.values(busMarkers).forEach(m => m.remove());
+            buses.forEach(bus => {
+                const { lat, lng, busId, timestamp, route } = bus;
+                // Update or create marker
+                if (busMarkers[busId]) {
+                    busMarkers[busId].setLatLng([lat, lng]);
+                } else {
+                    busMarkers[busId] = L.marker([lat, lng], { icon: busIcon }).addTo(map);
+                }
+                busMarkers[busId].addTo(map);
+                // Bus status card
+                const card = document.createElement('div');
+                card.className = "bg-gradient-to-br from-blue-50 to-indigo-50 rounded-lg p-4 border border-blue-200 mb-4 relative";
+                card.innerHTML = `
+                    <div class="flex items-center justify-between mb-3">
+                        <span class="text-sm font-medium text-gray-700">Status</span>
+                        <div class="flex items-center">
+                            <span class="w-2 h-2 bg-green-500 rounded-full mr-2 status-dot"></span>
+                            <span class="text-xs text-green-700 font-medium">Active</span>
+                        </div>
+                    </div>
+                    <div class="space-y-2">
+                        <div class="flex gap-6">
+                            <div>
+                                <p class="text-xs text-gray-600">Bus No</p>
+                                <p class="text-lg font-bold text-gray-800">${busId || 'Bus 1'}</p>
+                            </div>
+                            <div>
+                                <p class="text-xs text-gray-600">Route</p>
+                                <p class="text-lg font-bold text-gray-800">${route || 'Not assigned'}</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="absolute bottom-2 right-4 text-xs text-gray-500">Last updated: ${new Date(timestamp).toLocaleTimeString()}</div>
+                `;
+                busListEl.appendChild(card);
+            });
+        }
+
+        // Bus select change event
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('bus-select').addEventListener('change', function() {
+                selectedBusId = this.value;
+            });
+        });
+
+
+        function centerMap() {
+            // Center on the first bus marker (or selected bus if you want)
+            const busIds = Object.keys(busMarkers);
+            if (busIds.length > 0) {
+                map.setView(busMarkers[busIds[0]].getLatLng(), 16);
+                busMarkers[busIds[0]].openPopup && busMarkers[busIds[0]].openPopup();
+            }
+        }
+
+
+        // Show user's location as a marker when button is clicked
+        let userLocationMarker = null;
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('show-location-btn').onclick = function() {
+                if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(function(pos) {
+                        const lat = pos.coords.latitude;
+                        const lng = pos.coords.longitude;
+                        if (userLocationMarker) {
+                            userLocationMarker.setLatLng([lat, lng]);
+                        } else {
+                            userLocationMarker = L.marker([lat, lng], {
+                                icon: L.divIcon({
+                                    className: 'your-location-icon',
+                                    html: '<div style="font-size:1.5rem;background:#2563eb;color:#fff;border-radius:50%;width:32px;height:32px;display:flex;align-items:center;justify-content:center;">📍</div>',
+                                    iconSize: [32, 32],
+                                    iconAnchor: [16, 16]
+                                })
+                            }).addTo(map).bindPopup('Your Location');
+                        }
+                        userLocationMarker.openPopup();
+                        map.setView([lat, lng], 16);
+                    }, function() {
+                        alert('Unable to fetch your location.');
+                    });
+                } else {
+                    alert('Geolocation not supported.');
+                }
+            };
+        });
+
+        function refreshTracking() {
+            if (socket) {
+                socket.disconnect();
+                socket.connect();
+            }
+        }
+    
+  src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+  integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+  crossorigin=""
+
+        // Initialize connection
+        connectToServer();
+    </script>
+</body>
+</html>
