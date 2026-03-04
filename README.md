@@ -2,7 +2,8 @@
 
 # 🚌 Unified College Bus Tracking System
 
-### *Real-time bus tracking powered by smartphone GPS — no hardware required.*
+### *Real-time bus tracking powered by smartphone GPS — no hardware required. *
+### *Demo:* 🔗 https://cbtlive.vercel.app
 
 <br/>
 
