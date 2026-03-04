@@ -265,8 +265,8 @@
                 },
                 {
                     enableHighAccuracy: true,
-                    timeout: 30000,       // 30s — gives time on devices without GPS hardware
-                    maximumAge: 8000      // Accept a position up to 8s old to avoid repeat failures
+                    timeout: Infinity,    // Never time out — waits until location is found
+                    maximumAge: 8000
                 }
             );
         }
@@ -313,7 +313,7 @@
                 console.warn('Firebase watchPosition error (will retry):', err.message);
             }, {
                 enableHighAccuracy: true,
-                timeout: 30000,
+                timeout: Infinity,    // Never time out
                 maximumAge: 8000
             });
         }
