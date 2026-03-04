@@ -259,13 +259,14 @@
                     }
                 },
                 (error) => {
-                    console.error('Geolocation error:', error);
-                    alert('Unable to get location: ' + error.message);
+                    // Don't alert — just log and show status; next interval will retry
+                    console.warn('Geolocation error (will retry):', error.message);
+                    document.getElementById('last-update').textContent = 'Retrying… (' + error.message + ')';
                 },
                 {
                     enableHighAccuracy: true,
-                    timeout: 10000,
-                    maximumAge: 0
+                    timeout: 30000,       // 30s — gives time on devices without GPS hardware
+                    maximumAge: 8000      // Accept a position up to 8s old to avoid repeat failures
                 }
             );
         }
@@ -308,7 +309,13 @@
                     busId,
                     timestamp: Date.now()
                 });
-            }, null, { enableHighAccuracy: true, maximumAge: 0 });
+            }, (err) => {
+                console.warn('Firebase watchPosition error (will retry):', err.message);
+            }, {
+                enableHighAccuracy: true,
+                timeout: 30000,
+                maximumAge: 8000
+            });
         }
 
         function stopFirebaseWatch(busId) {
