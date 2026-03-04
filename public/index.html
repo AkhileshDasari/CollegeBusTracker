@@ -19,6 +19,10 @@
     <!-- Socket.IO -->
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
 
+    <!-- Firebase (compat CDN - works without a bundler) -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
+
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
         rel="stylesheet">
@@ -1302,14 +1306,14 @@
            INIT
         ═══════════════════════════════════════════════ */
         connectToServer();
-        // Import the functions you need from the SDKs you need
-        import { initializeApp } from "firebase/app";
-        import { getAnalytics } from "firebase/analytics";
-        // TODO: Add SDKs for Firebase products that you want to use
-        // https://firebase.google.com/docs/web/setup#available-libraries
 
-        // Your web app's Firebase configuration
-        // For Firebase JS SDK v7.20.0 and later, measurementId is optional
+        // Fix black map: Leaflet needs invalidateSize after layout settles
+        window.addEventListener('load', () => setTimeout(() => map.invalidateSize(), 300));
+
+        /* ═══════════════════════════════════════════════
+           FIREBASE REALTIME DATABASE
+           (compat CDN - no bundler needed)
+        ═══════════════════════════════════════════════ */
         const firebaseConfig = {
             apiKey: "AIzaSyBS3CfaZ0pG8rLXXzhR72lVcl9i5noldgQ",
             authDomain: "vfstrh-bus-tracker.firebaseapp.com",
@@ -1321,20 +1325,23 @@
             measurementId: "G-ZG1EF14FGZ"
         };
 
-        // Initialize Firebase
-        const app = initializeApp(firebaseConfig);
-        const analytics = getAnalytics(app);
-        onValue(ref(db, 'bus/location'), (snapshot) => {
+        firebase.initializeApp(firebaseConfig);
+        const fbDb = firebase.database();
 
-            const data = snapshot.val()
+        // Listen to real-time bus location updates from Firebase
+        fbDb.ref('buses').on('value', (snapshot) => {
+            const data = snapshot.val();
+            if (!data) return;
 
-            if (!data) return
+            // Each key is a busId, value has { lat, lng, busId, timestamp }
+            Object.entries(data).forEach(([busId, busData]) => {
+                if (!busData || busData.lat == null) return;
+                const { lat, lng, timestamp } = busData;
 
-            const lat = data.lat
-            const lng = data.lng
+                allBuses[busId] = { lat, lng, busId, timestamp: timestamp || Date.now(), route: busData.route || '' };
+            });
 
-            console.log("Bus location:", lat, lng)
-
+            renderBuses();
         });
 
     </script>

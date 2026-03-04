@@ -7,6 +7,9 @@
     <title>Bus Driver - Location Sender</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <!-- Firebase (compat CDN - works without a bundler) -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-database-compat.js"></script>
     <style>
         .pulse-ring {
             animation: pulse-ring 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite;
@@ -278,13 +281,7 @@
             }
         });
 
-        import { initializeApp } from "firebase/app";
-        import { getAnalytics } from "firebase/analytics";
-        // TODO: Add SDKs for Firebase products that you want to use
-        // https://firebase.google.com/docs/web/setup#available-libraries
-
-        // Your web app's Firebase configuration
-        // For Firebase JS SDK v7.20.0 and later, measurementId is optional
+        /* ── Firebase Setup ── */
         const firebaseConfig = {
             apiKey: "AIzaSyBS3CfaZ0pG8rLXXzhR72lVcl9i5noldgQ",
             authDomain: "vfstrh-bus-tracker.firebaseapp.com",
@@ -296,20 +293,47 @@
             measurementId: "G-ZG1EF14FGZ"
         };
 
-        // Initialize Firebase
-        const app = initializeApp(firebaseConfig);
-        const analytics = getAnalytics(app);
-        navigator.geolocation.watchPosition((pos) => {
+        firebase.initializeApp(firebaseConfig);
+        const fbDb = firebase.database();
+        let fbWatchId = null;
 
-            const lat = pos.coords.latitude
-            const lng = pos.coords.longitude
+        /* Write GPS to Firebase whenever tracking is active */
+        function startFirebaseWatch(busId) {
+            if (!navigator.geolocation) return;
+            fbWatchId = navigator.geolocation.watchPosition((pos) => {
+                const { latitude: lat, longitude: lng } = pos.coords;
+                fbDb.ref('buses/' + busId).set({
+                    lat,
+                    lng,
+                    busId,
+                    timestamp: Date.now()
+                });
+            }, null, { enableHighAccuracy: true, maximumAge: 0 });
+        }
 
-            set(ref(db, 'bus/location'), {
-                lat: lat,
-                lng: lng
-            })
+        function stopFirebaseWatch(busId) {
+            if (fbWatchId !== null) {
+                navigator.geolocation.clearWatch(fbWatchId);
+                fbWatchId = null;
+            }
+            // Mark bus as offline
+            fbDb.ref('buses/' + busId + '/online').set(false);
+        }
 
-        })
+        /* Hook into start/stop tracking */
+        const _origStart = startTracking;
+        startTracking = function () {
+            _origStart();
+            const busId = document.getElementById('busId').value.trim();
+            if (busId) startFirebaseWatch(busId);
+        };
+
+        const _origStop = stopTracking;
+        stopTracking = function () {
+            const busId = document.getElementById('busId').value.trim();
+            _origStop();
+            if (busId) stopFirebaseWatch(busId);
+        };
 
     </script>
 </body>
