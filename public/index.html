@@ -969,52 +969,119 @@
         /* ═══════════════════════════════════════════════
            ROUTE STOPS & POLYLINE
         ═══════════════════════════════════════════════ */
-        const route3Stops = [
-            { name: "Dsnr1", lat: 17.368694, lng: 78.526333 },
-            { name: "Dsnr2", lat: 17.368583, lng: 78.530472 },
-            { name: "Chaitanyapuri", lat: 17.368583, lng: 78.530472 },
-            { name: "Kothapet", lat: 17.366972, lng: 78.541028 },
-            { name: "Victoria Memorial", lat: 17.362694, lng: 78.543833 },
-            { name: "Lb Nagar", lat: 17.349361, lng: 78.548444 },
-            { name: "Chinchalkunta", lat: 17.342417, lng: 78.557250 },
-            { name: "Art Cinemas", lat: 17.338722, lng: 78.567806 },
-            { name: "Hayath Nagar", lat: 17.327139, lng: 78.604472 },
-            { name: "Abdullahpurmet", lat: 17.311944, lng: 78.687194 }
-        ];
+        const routesData = {
+            "1": [
+                { name: "Stop 1", lat: 17.4953397, lng: 78.3179897 },
+                { name: "Stop 2", lat: 17.4952841, lng: 78.3402456 },
+                { name: "Stop 3", lat: 17.4945662, lng: 78.3481501 },
+                { name: "Stop 4", lat: 17.4945208, lng: 78.3522012 },
+                { name: "Stop 5", lat: 17.4966664, lng: 78.3604591 },
+                { name: "Stop 6", lat: 17.4965814, lng: 78.3709650 },
+                { name: "Stop 7", lat: 17.4985399, lng: 78.3905002 },
+                { name: "Stop 8", lat: 17.4963588, lng: 78.3958602 },
+                { name: "Stop 9", lat: 17.4777846, lng: 78.4209087 },
+                { name: "Stop 10", lat: 17.4672479, lng: 78.4458898 },
+                { name: "Stop 11", lat: 17.4633334, lng: 78.4736181 },
+                { name: "Stop 12", lat: 17.4432819, lng: 78.4970543 },
+                { name: "Stop 13", lat: 17.4408145, lng: 78.5067267 },
+                { name: "Stop 14", lat: 17.4343199, lng: 78.5211965 }
+            ],
+            "3": [
+                { name: "Dsnr1", lat: 17.368694, lng: 78.526333 },
+                { name: "Dsnr2", lat: 17.368583, lng: 78.530472 },
+                { name: "Chaitanyapuri", lat: 17.368583, lng: 78.530472 },
+                { name: "Kothapet", lat: 17.366972, lng: 78.541028 },
+                { name: "Victoria Memorial", lat: 17.362694, lng: 78.543833 },
+                { name: "Lb Nagar", lat: 17.349361, lng: 78.548444 },
+                { name: "Chinchalkunta", lat: 17.342417, lng: 78.557250 },
+                { name: "Art Cinemas", lat: 17.338722, lng: 78.567806 },
+                { name: "Hayath Nagar", lat: 17.327139, lng: 78.604472 },
+                { name: "Abdullahpurmet", lat: 17.311944, lng: 78.687194 }
+            ]
+        };
 
-        /* Polyline: route → college */
-        const routeCoords = [...route3Stops.map(s => [s.lat, s.lng]), [COLLEGE_LAT, COLLEGE_LNG]];
-        const routePolyline = L.polyline(routeCoords, {
-            color: '#2563eb',
-            weight: 4,
-            opacity: 0.5,
-            lineJoin: 'round'
-        }).addTo(map);
+        const routeNames = {
+            "1": "Route 1 ➝ VFSTR",
+            "3": "Route 3 – Kothapet ➝ VFSTR"
+        };
+        
+        let activeRoutesMapLayers = {};
 
-        /* Stop markers */
-        route3Stops.forEach((stop, i) => {
-            L.circleMarker([stop.lat, stop.lng], {
-                radius: 5,
-                fillColor: i === 0 ? '#f59e0b' : '#3b82f6',
-                color: '#fff',
-                weight: 2,
-                opacity: 1,
-                fillOpacity: 0.9
-            }).addTo(map)
-                .bindPopup(`<div style="font-family:Inter,sans-serif;font-size:12px;"><b>${stop.name}</b><br><span style="color:#64748b">Stop ${i + 1} of ${route3Stops.length}</span></div>`);
-        });
+        function updateDrawnRoutes() {
+            let activeRouteNums = new Set();
+            
+            // Only add the route for the selected bus, if it is online
+            if (selectedBusId && allBuses[selectedBusId]) {
+                const bus = allBuses[selectedBusId];
+                const isOnline = bus.timestamp && (Date.now() - bus.timestamp) < 30000;
+                if (isOnline) {
+                    let m = selectedBusId.match(/\d+/);
+                    if (m) activeRouteNums.add(m[0]);
+                }
+            }
 
-        /* Routing machine (hidden, for road-snapping) */
-        if (window.L && window.L.Routing) {
-            L.Routing.control({
-                waypoints: route3Stops.map(s => L.latLng(s.lat, s.lng)),
-                routeWhileDragging: false,
-                addWaypoints: false,
-                draggableWaypoints: false,
-                fitSelectedRoutes: false,
-                show: false,
-                lineOptions: { styles: [{ color: '#2563eb', weight: 5, opacity: 0.7 }] }
-            }).addTo(map);
+            // Remove routes that are no longer active or unselected
+            Object.keys(activeRoutesMapLayers).forEach(routeNum => {
+                if (!activeRouteNums.has(routeNum)) {
+                    activeRoutesMapLayers[routeNum].forEach(layer => {
+                        if (layer instanceof L.Routing.Control) {
+                            map.removeControl(layer);
+                        } else {
+                            map.removeLayer(layer);
+                        }
+                    });
+                    delete activeRoutesMapLayers[routeNum];
+                }
+            });
+
+            // Add routes that are active and selected but not drawn
+            activeRouteNums.forEach(routeNum => {
+                if (!activeRoutesMapLayers[routeNum] && routesData[routeNum]) {
+                    let layers = [];
+                    let color = routeNum === "1" ? '#e11d48' : '#3b82f6';
+                    
+                    let stops = routesData[routeNum];
+                    let routeCoords = [...stops.map(s => [s.lat, s.lng]), [COLLEGE_LAT, COLLEGE_LNG]];
+                    
+                    // Fallback straight polyline
+                    let polyline = L.polyline(routeCoords, {
+                        color: color,
+                        weight: 4,
+                        opacity: 0.5,
+                        lineJoin: 'round'
+                    }).addTo(map);
+                    layers.push(polyline);
+
+                    stops.forEach((stop, i) => {
+                        let circle = L.circleMarker([stop.lat, stop.lng], {
+                            radius: 6,
+                            fillColor: i === 0 ? '#f59e0b' : color, 
+                            color: '#ffffff',
+                            weight: 2,
+                            opacity: 1,
+                            fillOpacity: 1
+                        }).addTo(map)
+                            .bindPopup(`<div style="font-family:Inter,sans-serif;font-size:12px;"><b>${stop.name}</b><br><span style="color:#64748b">Stop ${i + 1} of ${stops.length}</span></div>`);
+                        layers.push(circle);
+                    });
+                    
+                    // Leaflet Routing Machine for road-snapping and teardrop markers
+                    if (window.L && window.L.Routing) {
+                        let routingControl = L.Routing.control({
+                            waypoints: [...stops.map(s => L.latLng(s.lat, s.lng)), L.latLng(COLLEGE_LAT, COLLEGE_LNG)],
+                            routeWhileDragging: false,
+                            addWaypoints: false,
+                            draggableWaypoints: false,
+                            fitSelectedRoutes: false,
+                            show: false,
+                            lineOptions: { styles: [{ color: color, weight: 5, opacity: 0.7 }] }
+                        }).addTo(map);
+                        layers.push(routingControl);
+                    }
+                    
+                    activeRoutesMapLayers[routeNum] = layers;
+                }
+            });
         }
 
         /* ═══════════════════════════════════════════════
@@ -1108,6 +1175,8 @@
 
             const activeBusIds = Object.keys(allBuses);
 
+            updateDrawnRoutes();
+
             countBadge.textContent = activeBusIds.length;
             chipCount.textContent = activeBusIds.length;
             subtitle.textContent = activeBusIds.length > 0
@@ -1166,13 +1235,16 @@
                     /* Driver online if updated in last 30 seconds */
                     const isOnline = timestamp && (Date.now() - timestamp) < 30000;
 
+                    let routeNum = busId.match(/\d+/)?.[0];
+                    let routeDisplayName = route || routeNames[routeNum] || `Route ${routeNum || busId} ➝ VFSTR`;
+
                     const card = document.createElement('div');
                     card.className = `bus-card${isSelected ? ' selected' : ''}`;
                     card.innerHTML = `
                     <div class="bus-icon-wrap">🚌</div>
                     <div class="bus-info">
                         <div class="bus-name">Bus ${busId}</div>
-                        <div class="bus-route">${route || 'Route 3 – Kothapet ➝ VFSTR'}</div>
+                        <div class="bus-route">${routeDisplayName}</div>
                         <div class="driver-status ${isOnline ? 'online' : 'offline'}">
                             ${isOnline ? '● Driver Online' : '○ Driver Offline'}
                         </div>
@@ -1199,9 +1271,11 @@
             const { lat, lng, route, timestamp } = bus;
             const eta = estimateETA(lat, lng);
             const timeStr = timestamp ? new Date(timestamp).toLocaleTimeString() : '—';
+            let routeNum = busId.match(/\d+/)?.[0];
+            let routeDisplayName = route || routeNames[routeNum] || `Route ${routeNum || busId} ➝ VFSTR`;
             return `<div style="font-family:Inter,sans-serif;min-width:160px;padding:4px 2px">
                   <b style="font-size:14px;color:#0f172a">🚌 Bus ${busId}</b>
-                  <div style="font-size:12px;color:#64748b;margin:4px 0">${route || 'Route 3 – Kothapet ➝ VFSTR'}</div>
+                  <div style="font-size:12px;color:#64748b;margin:4px 0">${routeDisplayName}</div>
                   <div style="font-size:11px;color:#2563eb;font-weight:600">ETA: ${eta}</div>
                   <div style="font-size:10px;color:#94a3b8;margin-top:4px">Updated: ${timeStr}</div>
                 </div>`;
