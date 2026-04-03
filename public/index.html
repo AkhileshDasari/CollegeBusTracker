@@ -1001,15 +1001,15 @@
         };
 
         const routeNames = {
-            "1": "Route 1 ➝ VFSTR",
-            "3": "Route 3 – Kothapet ➝ VFSTR"
+            "1": "Route 1 ➝ Uppal ➝ Nagole ➝ Bandlaguda ➝ Tarnaka ➝ VFSTR",
+            "3": "Route 3 – Kothapet ➝ LB Nagar ➝ Hayath Nagar ➝ Abdullahpurmet ➝ VFSTR"
         };
-        
+
         let activeRoutesMapLayers = {};
 
         function updateDrawnRoutes() {
             let activeRouteNums = new Set();
-            
+
             // Only add the route for the selected bus, if it is online
             if (selectedBusId && allBuses[selectedBusId]) {
                 const bus = allBuses[selectedBusId];
@@ -1039,10 +1039,10 @@
                 if (!activeRoutesMapLayers[routeNum] && routesData[routeNum]) {
                     let layers = [];
                     let color = routeNum === "1" ? '#e11d48' : '#3b82f6';
-                    
+
                     let stops = routesData[routeNum];
                     let routeCoords = [...stops.map(s => [s.lat, s.lng]), [COLLEGE_LAT, COLLEGE_LNG]];
-                    
+
                     // Fallback straight polyline
                     let polyline = L.polyline(routeCoords, {
                         color: color,
@@ -1055,7 +1055,7 @@
                     stops.forEach((stop, i) => {
                         let circle = L.circleMarker([stop.lat, stop.lng], {
                             radius: 6,
-                            fillColor: i === 0 ? '#f59e0b' : color, 
+                            fillColor: i === 0 ? '#f59e0b' : color,
                             color: '#ffffff',
                             weight: 2,
                             opacity: 1,
@@ -1064,7 +1064,7 @@
                             .bindPopup(`<div style="font-family:Inter,sans-serif;font-size:12px;"><b>${stop.name}</b><br><span style="color:#64748b">Stop ${i + 1} of ${stops.length}</span></div>`);
                         layers.push(circle);
                     });
-                    
+
                     // Leaflet Routing Machine for road-snapping and teardrop markers
                     if (window.L && window.L.Routing) {
                         let routingControl = L.Routing.control({
@@ -1078,7 +1078,7 @@
                         }).addTo(map);
                         layers.push(routingControl);
                     }
-                    
+
                     activeRoutesMapLayers[routeNum] = layers;
                 }
             });
