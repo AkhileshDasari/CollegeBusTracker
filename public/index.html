@@ -1405,6 +1405,7 @@
         // Listen to real-time bus location updates from Firebase
         fbDb.ref('buses').on('value', (snapshot) => {
             const data = snapshot.val();
+            console.log("Firebase snapshot received!", data);
             if (!data) return;
 
             // Each key is a busId, value has { lat, lng, busId, timestamp }
